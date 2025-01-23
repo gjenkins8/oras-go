@@ -25,6 +25,108 @@ import (
 const ValidDigest = "sha256:b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
 const InvalidDigest = "sha256:b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde"
 
+func TestValidTag(t *testing.T) {
+	tests := map[string]struct {
+		tag       string
+		wantValid bool
+	}{
+		"valid_alpha": {
+			tag:       "latest",
+			wantValid: true,
+		},
+		"valid_all_chars": {
+			tag:       "abzABZ123.1-_",
+			wantValid: true,
+		},
+		"invalid_empty": {
+			tag:       "",
+			wantValid: false,
+		},
+		"invalid_length": {
+			tag:       "23e22089345uy2ofhwefbwkjfb2i34oury293ryh2qwlfjbwejkdvhbwkueiyftkjb3ri2uy3gr83rt873eftg24uifrb34hjfb3872238o7r4y2323rlfifwv8ierftc",
+			wantValid: false,
+		},
+		"invalid_initial_char": {
+			tag:       ".abc",
+			wantValid: false,
+		},
+	}
+
+	for name, tc := range tests {
+		want := tc.wantValid
+		t.Run(name, func(t *testing.T) {
+			if want != validTag(tc.tag) {
+				t.Errorf("validTag() unexpected result")
+			}
+		})
+	}
+}
+
+func TestValidRepositoryName(t *testing.T) {
+	tests := map[string]struct {
+		repostitoryName string
+		wantValid       bool
+	}{
+		"valid_alphanum": {
+			repostitoryName: "helloworld1245",
+			wantValid:       true,
+		},
+		"valid_multiple_segments_alphanum": {
+			repostitoryName: "helloworld/h23ef/2ecverv334verv",
+			wantValid:       true,
+		},
+		"valid": {
+			repostitoryName: "hello-world.1_3__4-5",
+			wantValid:       true,
+		},
+		"valid_multiple_segments": {
+			repostitoryName: "helloworld/hello-world.1_2__3-4/hello-world.1_2__3-4",
+			wantValid:       true,
+		},
+		"valid_multiple_segments_all_chars": {
+			repostitoryName: "hello-world.1_2__3-4/hello-world.1_2__3-4/hello-world.1_2__3-4",
+			wantValid:       true,
+		},
+		"invalid_empty": {
+			repostitoryName: "",
+			wantValid:       false,
+		},
+		"invalid_empty_segment": {
+			repostitoryName: "edef//efwegfr",
+			wantValid:       false,
+		},
+		"invalid_empty_start_segment": {
+			repostitoryName: "/edef/efwegfr/vfee",
+			wantValid:       false,
+		},
+		"invalid_empty_end_segment": {
+			repostitoryName: "edef/efwegfr/",
+			wantValid:       false,
+		},
+		"invalid_segment_initial_char": {
+			repostitoryName: "abc/wgfweg/.ferg",
+			wantValid:       false,
+		},
+		"invalid_segment_end_char": {
+			repostitoryName: "abc/wgfweg_/ferg",
+			wantValid:       false,
+		},
+		"invalid_segment_bad_seq": {
+			repostitoryName: "abc/wgf..weg_/ferg",
+			wantValid:       false,
+		},
+	}
+
+	for name, tc := range tests {
+		want := tc.wantValid
+		t.Run(name, func(t *testing.T) {
+			if want != validRepositoryName(tc.repostitoryName) {
+				t.Errorf("validRepositoryName() unexpected result")
+			}
+		})
+	}
+}
+
 // For a definition of what a "valid form [ABCD]" means, see reference.go.
 func TestParseReferenceGoodies(t *testing.T) {
 	tests := []struct {

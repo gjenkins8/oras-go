@@ -19,29 +19,137 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/opencontainers/go-digest"
 	"oras.land/oras-go/v2/errdef"
 )
 
-// regular expressions for components.
-var (
-	// repositoryRegexp is adapted from the distribution implementation. The
-	// repository name set under OCI distribution spec is a subset of the docker
-	// spec. For maximum compatability, the docker spec is verified client-side.
-	// Further checks are left to the server-side.
-	//
+// validTag checks the tag name.
+// The docker and OCI spec have the same regular expression.
+func validTag(tag string) bool {
+	// a tag MUST be at most 128 characters in length and MUST match the following regular expression:
+	// [a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}
+	// Reference: https://github.com/opencontainers/distribution-spec/blob/v1.1.0/spec.md#pulling-manifests
+
+	tagLength := len(tag)
+	if tagLength < 1 || tagLength > 128 {
+		return false
+	}
+
+	valid1 := func(c byte) bool {
+		if c >= 'a' && c <= 'z' {
+			return true
+		} else if c >= 'A' && c <= 'Z' {
+			return true
+		} else if c >= '0' && c <= '9' {
+			return true
+		} else if c == '_' {
+			return true
+		}
+
+		return false
+	}
+
+	valid2 := func(c byte) bool {
+		if c >= 'a' && c <= 'z' {
+			return true
+		} else if c >= 'A' && c <= 'Z' {
+			return true
+		} else if c >= '0' && c <= '9' {
+			return true
+		} else if c == '.' || c == '_' || c == '-' {
+			return true
+		}
+
+		return false
+	}
+
+	if !valid1(tag[0]) {
+		return false
+	}
+
+	if !slices.ContainsFunc([]byte(tag)[1:len(tag)], valid2) {
+		return false
+	}
+
+	return true
+}
+
+// validRepositoryName validates the given repository name is valid
+// The repository name set under OCI distribution spec is a subset of the docker
+// spec. For maximum compatability, the docker spec is verified client-side.
+// Further checks are left to the server-side.
+func validRepositoryName(repositoryName string) bool {
+	// <name> MUST match the following regular expression:
+	// [a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*(\/[a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*)*
 	// References:
 	//   - https://github.com/distribution/distribution/blob/v2.7.1/reference/regexp.go#L53
 	//   - https://github.com/opencontainers/distribution-spec/blob/v1.1.0/spec.md#pulling-manifests
-	repositoryRegexp = regexp.MustCompile(`^[a-z0-9]+(?:(?:[._]|__|[-]*)[a-z0-9]+)*(?:/[a-z0-9]+(?:(?:[._]|__|[-]*)[a-z0-9]+)*)*$`)
 
-	// tagRegexp checks the tag name.
-	// The docker and OCI spec have the same regular expression.
-	//
-	// Reference: https://github.com/opencontainers/distribution-spec/blob/v1.1.0/spec.md#pulling-manifests
-	tagRegexp = regexp.MustCompile(`^[\w][\w.-]{0,127}$`)
+	segments := strings.Split(repositoryName, "/")
+
+	if len(segments) == 0 {
+		return false
+	}
+
+	isAlphaNum := func(c byte) bool {
+		if c >= 'a' && c <= 'z' {
+			return true
+		} else if c >= '0' && c <= '9' {
+			return true
+		}
+
+		return false
+	}
+
+	isValidSegment := func(segment string) bool {
+		if len(segment) == 0 {
+			return false
+		}
+
+		have := false
+		for i := 0; i < len(segment); {
+
+			if i == 0 || i == len(segment)-1 {
+				if !isAlphaNum(segment[i]) {
+					return false
+				}
+
+				i += 1
+			} else if i != len(segment)-1 && segment[i:i+2] == "__" && !have {
+				have = true
+
+				i += 2
+			} else if c := segment[i]; (c == '.' || c == '_' || c == '-') && !have {
+				have = true
+
+				i += 1
+			} else if c := segment[i]; isAlphaNum(c) {
+				have = false
+
+				i += 1
+			} else {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	for _, segment := range segments {
+		if !isValidSegment(segment) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// regular expressions for components.
+var (
+	repositoryRegexp = regexp.MustCompile(`^[a-z0-9]+(?:(?:[._]|__|[-]*)[a-z0-9]+)*(?:/[a-z0-9]+(?:(?:[._]|__|[-]*)[a-z0-9]+)*)*$`)
 )
 
 // Reference references either a resource descriptor (where Reference.Reference
@@ -200,7 +308,7 @@ func (r Reference) ValidateRegistry() error {
 
 // ValidateRepository validates the repository.
 func (r Reference) ValidateRepository() error {
-	if !repositoryRegexp.MatchString(r.Repository) {
+	if !validRepositoryName(r.Repository) {
 		return fmt.Errorf("%w: invalid repository %q", errdef.ErrInvalidReference, r.Repository)
 	}
 	return nil
@@ -208,7 +316,7 @@ func (r Reference) ValidateRepository() error {
 
 // ValidateReferenceAsTag validates the reference as a tag.
 func (r Reference) ValidateReferenceAsTag() error {
-	if !tagRegexp.MatchString(r.Reference) {
+	if !validTag(r.Reference) {
 		return fmt.Errorf("%w: invalid tag %q", errdef.ErrInvalidReference, r.Reference)
 	}
 	return nil
